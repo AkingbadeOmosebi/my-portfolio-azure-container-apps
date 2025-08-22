@@ -2,15 +2,15 @@ name: Portfolio CI/CD (ECR → Azure Container Apps + Scans)
 
 on:
   push:
-    branches: ["main"]    # Pipeline triggers on push to main branch
+    branches: ["main"]    # Trigger pipeline on push to main
   pull_request:
-    branches: ["main"]    # Also triggers on pull requests to main
+    branches: ["main"]    # Trigger pipeline on PRs to main
 
 # Repo-wide environment variables (all secrets are hidden)
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}           # AWS region, hidden
-  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}       # AWS ECR registry, hidden
-  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # AWS ECR repository, hidden
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
 
 jobs:
   # --- 1) SonarCloud Code Quality Scan ---
@@ -20,29 +20,27 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        # Pulls source code for analysis
 
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: 17
-        # Java required for SonarCloud
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
         env:
-          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}   # GitHub secret
+          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
           SONAR_ORGANIZATION: ${{ secrets.SONARCLOUD_ORG }}
           SONAR_PROJECT_KEY: my-portfolio-app
-
-        # Performs static code analysis (bugs, smells, vulnerabilities)
+        with:
+          projectBaseDir: .
 
   # --- 2) tfsec Terraform Security Scan ---
   tfsec:
     name: tfsec Security Scan
     runs-on: ubuntu-latest
-    needs: sonarcloud   # Only run after SonarCloud passes
+    needs: sonarcloud
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -50,17 +48,15 @@ jobs:
       - name: Install tfsec
         run: |
           curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
-        # Installs tfsec CLI for scanning Terraform
 
       - name: Run tfsec scan
         run: tfsec .
-        # Scans all Terraform code for misconfigurations before deployment
 
   # --- 3) Docker Build & Push to AWS ECR ---
   build-and-deploy:
     name: Build Docker & Push to ECR
     runs-on: ubuntu-latest
-    needs: tfsec   # Only run if tfsec scan passes
+    needs: tfsec
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -82,7 +78,6 @@ jobs:
         run: |
           echo "SHA_SHORT=${GITHUB_SHA::12}" >> $GITHUB_OUTPUT
           echo "IMAGE_URI=${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}" >> $GITHUB_OUTPUT
-        # Short SHA used as unique Docker image tag
 
       - name: Build Docker image
         run: |
@@ -90,19 +85,17 @@ jobs:
             -t ${{ steps.vars.outputs.IMAGE_URI }}:latest \
             -t ${{ steps.vars.outputs.IMAGE_URI }}:${{ steps.vars.outputs.SHA_SHORT }} \
             ./app
-        # Build Docker image from app folder
 
       - name: Push Docker image
         run: |
           docker push ${{ steps.vars.outputs.IMAGE_URI }}:latest
           docker push ${{ steps.vars.outputs.IMAGE_URI }}:${{ steps.vars.outputs.SHA_SHORT }}
-        # Push both tags to AWS ECR
 
   # --- 4) Terraform Deploy to Azure ---
   terraform:
     name: Terraform Deploy to Azure
     runs-on: ubuntu-latest
-    needs: build-and-deploy   # Deploy only after Docker image pushed
+    needs: build-and-deploy
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -111,13 +104,11 @@ jobs:
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-        # Authenticate to Azure using Service Principal stored as secret
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.5"
-        # Install Terraform CLI
 
       - name: Terraform Init/Plan/Apply
         env:
@@ -131,4 +122,3 @@ jobs:
           terraform init
           terraform plan -out=tfplan
           terraform apply -auto-approve tfplan
-        # Deploys the new Docker image to Azure Container Apps using Terraform

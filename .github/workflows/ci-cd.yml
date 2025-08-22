@@ -2,26 +2,21 @@ name: Portfolio CI/CD (ECR → Azure Container Apps + Scans)
 
 on:
   push:
-    branches: ["main"]    # Trigger pipeline on push to main
+    branches: ["main"]
   pull_request:
-    branches: ["main"]    # Trigger pipeline on PRs to main
-
-# Repo-wide environment variables (all secrets are hidden)
-env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
-  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+    branches: ["main"]
 
 jobs:
-  # --- 1) SonarCloud Code Quality Scan ---
+  # --- 1) SonarCloud: Code Quality scan on the app only ---
   sonarcloud:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        # Grabs the repo so Sonar can analyze it
 
-      - name: Set up JDK 17
+      - name: Set up JDK 17 (Sonar scanner needs Java)
         uses: actions/setup-java@v3
         with:
           distribution: temurin
@@ -29,18 +24,19 @@ jobs:
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
-          SONAR_ORGANIZATION: ${{ secrets.SONARCLOUD_ORG }}
-          SONAR_PROJECT_KEY: my-portfolio-app
         with:
-          projectBaseDir: .
+          projectBaseDir: ./app                # Scan only the app folder
+          args: >-                              # Pass org & project via args (cleaner)
+            -Dsonar.organization=${{ secrets.SONARCLOUD_ORG }}
+            -Dsonar.projectKey=my-portfolio-app
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}  # Required auth token
 
-  # --- 2) tfsec Terraform Security Scan ---
+  # --- 2) tfsec: Security scan on Terraform only ---
   tfsec:
     name: tfsec Security Scan
     runs-on: ubuntu-latest
-    needs: sonarcloud
+    needs: sonarcloud   # Only run if SonarCloud passed
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,19 +45,29 @@ jobs:
         run: |
           curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
 
-      - name: Run tfsec scan
+      - name: Run tfsec (scan Terraform folder)
+        working-directory: ./Terraform
         run: tfsec .
+        # Fails the build if misconfigs are found (good for guardrails)
 
-  # --- 3) Docker Build & Push to AWS ECR ---
+  # --- 3) Build & Push Docker image to AWS ECR ---
   build-and-deploy:
     name: Build Docker & Push to ECR
     runs-on: ubuntu-latest
     needs: tfsec
+    # Scope AWS/ECR values to this job (kept hidden via secrets)
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+    outputs:
+      image_tag: ${{ steps.vars.outputs.SHA_SHORT }}     # Expose to next job
+      image_uri: ${{ steps.vars.outputs.IMAGE_URI }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (for ECR)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -69,56 +75,66 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        run: |
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
-          docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Compute image tags
         id: vars
         run: |
           echo "SHA_SHORT=${GITHUB_SHA::12}" >> $GITHUB_OUTPUT
-          echo "IMAGE_URI=${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}" >> $GITHUB_OUTPUT
+          echo "IMAGE_URI=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}" >> $GITHUB_OUTPUT
+        # Short commit SHA = unique, traceable image tag
 
-      - name: Build Docker image
+      - name: Build Docker image (from ./app)
         run: |
           docker build \
             -t ${{ steps.vars.outputs.IMAGE_URI }}:latest \
             -t ${{ steps.vars.outputs.IMAGE_URI }}:${{ steps.vars.outputs.SHA_SHORT }} \
             ./app
 
-      - name: Push Docker image
+      - name: Push Docker image to ECR
         run: |
           docker push ${{ steps.vars.outputs.IMAGE_URI }}:latest
           docker push ${{ steps.vars.outputs.IMAGE_URI }}:${{ steps.vars.outputs.SHA_SHORT }}
 
-  # --- 4) Terraform Deploy to Azure ---
+  # --- 4) Terraform: Deploy to Azure Container Apps (uses Terraform Cloud backend) ---
   terraform:
     name: Terraform Deploy to Azure
     runs-on: ubuntu-latest
     needs: build-and-deploy
+    env:
+      # Pass the image tag produced by the build job to Terraform (as var.image_tag)
+      TF_VAR_image_tag: ${{ needs.build-and-deploy.outputs.image_tag }}
+      # Provide Terraform Cloud token so CLI can talk to TFC
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+      # ARM_* needed by azurerm provider to auth with the SPN you created
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Azure Login
-        uses: azure/login@v1
+      - name: Azure Login (Service Principal)
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Setup Terraform
+      - name: Setup Terraform (configure CLI to use Terraform Cloud)
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.7.5"
+          terraform_version: "1.12.2"                        # Match your TFC workspace version
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Terraform Init/Plan/Apply
-        env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-          TF_VAR_image_tag: ${{ steps.vars.outputs.SHA_SHORT }}
-          TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
-        run: |
-          terraform init
-          terraform plan -out=tfplan
-          terraform apply -auto-approve tfplan
+      - name: Terraform Init (Terraform folder)
+        working-directory: ./Terraform
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        working-directory: ./Terraform
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        working-directory: ./Terraform
+        run: terraform apply -auto-approve -input=false tfplan

@@ -31,10 +31,11 @@ jobs:
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
-        with:
-          organization: ${{ secrets.SONARCLOUD_ORG }}
-          token: ${{ secrets.SONARCLOUD_TOKEN }}
-          projectKey: my-portfolio-app
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}   # GitHub secret
+          SONAR_ORGANIZATION: ${{ secrets.SONARCLOUD_ORG }}
+          SONAR_PROJECT_KEY: my-portfolio-app
+
         # Performs static code analysis (bugs, smells, vulnerabilities)
 
   # --- 2) tfsec Terraform Security Scan ---

@@ -14,11 +14,11 @@ variable "ecr_token" {
 
 variable "ecr_registry" {
   type        = string
-  description = "Full ECR registry URL, e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com"
+  description = "somwthing like 123456789012.dkr.ecr.us-east-1.amazonaws.com"
 }
 
 variable "ecr_repository" {
   type        = string
-  description = "ECR repository name, e.g., my-portfolio"
+  description = "similar to my_portfolio"
 }
 

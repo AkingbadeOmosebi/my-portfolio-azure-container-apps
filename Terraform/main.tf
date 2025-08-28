@@ -37,7 +37,7 @@ resource "azurerm_container_app" "app" {
   template {
     container {
       name   = "portfolio"
-      image  = "194722436853.dkr.ecr.eu-central-1.amazonaws.com/my_portfolio:${var.image_tag}"
+      image  = "${var.ecr_registry}/${var.ecr_repository}:${var.image_tag}"
       cpu    = 0.5
       memory = "1.0Gi"
     }

@@ -39,18 +39,19 @@ jobs:
           IMAGE_URI_SHA=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
           IMAGE_URI_LATEST=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
-          # Debug info (non-sensitive)
+          # Debug info
           echo "IMAGE_URI_SHA=$IMAGE_URI_SHA"
           echo "IMAGE_URI_LATEST=$IMAGE_URI_LATEST"
 
-          # Build image
+          # Build image (force rebuild)
           echo "🔨 Building Docker image..."
-          docker build -t $IMAGE_URI_SHA -t $IMAGE_URI_LATEST -f ./app/Dockerfile ./app
+          docker build --no-cache -t $IMAGE_URI_SHA -t $IMAGE_URI_LATEST -f ./app/Dockerfile ./app
 
           # Push both tags
           echo "📤 Pushing both tags to ECR..."
           docker push $IMAGE_URI_SHA
           docker push $IMAGE_URI_LATEST
+
 
       # 5 Run Trivy vulnerability scanner
       - name: Run Trivy vulnerability scanner

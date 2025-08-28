@@ -10,7 +10,7 @@ on:
 env:
   TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}    #  Terraform Cloud API token (secure)
   TERRAFORM_FOLDER: ./Terraform                #  Folder containing my Terraform configs (main.tf, etc.)
-
+  
 jobs:
   terraform-cloud-run:
     runs-on: ubuntu-latest

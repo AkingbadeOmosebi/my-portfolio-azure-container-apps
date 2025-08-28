@@ -22,7 +22,3 @@ variable "ecr_repository" {
   description = "ECR repository name, e.g., my-portfolio"
 }
 
-variable "image_tag" {
-  type        = string
-  description = "Docker image tag, typically commit SHA"
-}

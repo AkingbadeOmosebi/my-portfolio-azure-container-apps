@@ -12,3 +12,17 @@ variable "ecr_token" {
 }
 
 
+variable "ecr_registry" {
+  type        = string
+  description = "Full ECR registry URL, e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com"
+}
+
+variable "ecr_repository" {
+  type        = string
+  description = "ECR repository name, e.g., my-portfolio"
+}
+
+variable "image_tag" {
+  type        = string
+  description = "Docker image tag, typically commit SHA"
+}

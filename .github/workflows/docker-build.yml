@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-  IMAGE_TAG: ${{ github.sha }}           # Commit SHA for unique tagging in my ECR
+  IMAGE_TAG: ${{ github.sha }}           # Commit SHA for unique tagging in my ECR..
 
 jobs:
   build-and-scan:

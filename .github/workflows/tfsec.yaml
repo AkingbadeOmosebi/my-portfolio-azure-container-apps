@@ -1,0 +1,28 @@
+# Terrafrm Sec 
+
+name: tfsec Scan
+
+on:
+  workflow_run:
+    workflows: ["SonarCloud Scan"]
+    types:
+      - completed   #  Run after SonarCloud completes
+
+env:
+  TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}  #  Token for Terraform Cloud / API
+
+jobs:
+  tfsec:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️ Checkout repo
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2️ Run tfsec (Terraform static analysis)
+      - name: Run tfsec (Terraform security scan)
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          args: ./Terraform   #  Path to my Terraform files
+        continue-on-error: true   #  Warn-only; don't fail pipeline

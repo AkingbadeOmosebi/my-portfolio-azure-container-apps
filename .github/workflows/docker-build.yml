@@ -1,0 +1,62 @@
+name: Docker Build and Trivy Scan
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  IMAGE_TAG: ${{ github.sha }}           # Commit SHA for unique tagging in my ECR
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️ Checkout repo
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # 2️ Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 3️ Login to Amazon ECR
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 4️ Build & push Docker image with SHA + latest tags
+      - name: Build and Push Docker image to ECR
+        run: |
+          # Construct full image URIs
+          IMAGE_URI_SHA=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          IMAGE_URI_LATEST=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+
+          # Debug info (non-sensitive)
+          echo "IMAGE_URI_SHA=$IMAGE_URI_SHA"
+          echo "IMAGE_URI_LATEST=$IMAGE_URI_LATEST"
+
+          # Build image
+          echo "🔨 Building Docker image..."
+          docker build -t $IMAGE_URI_SHA -t $IMAGE_URI_LATEST -f ./app/Dockerfile ./app
+
+          # Push both tags
+          echo "📤 Pushing both tags to ECR..."
+          docker push $IMAGE_URI_SHA
+          docker push $IMAGE_URI_LATEST
+
+      # 5 Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: $IMAGE_URI_SHA
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+        continue-on-error: true   #  Warn-only; don't fail pipeline

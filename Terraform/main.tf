@@ -37,7 +37,7 @@ resource "azurerm_container_app" "app" {
   template {
     container {
       name   = "portfolio"
-      image  = "${var.ecr_registry}/${var.ecr_repository}:${var.image_tag}"
+      image  = "${var.ecr_registry}/${var.ecr_repository}:latest"
       cpu    = 0.5
       memory = "1.0Gi"
     }

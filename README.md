@@ -107,3 +107,11 @@ cred.tf # TF Cloud config
 > Crafted with care to demonstrate **real-world DevOps skills** in a portfolio-ready project.
 > Failed and passed scans are intentionally left to show the process.
 > Failure and Progress are part of the process.
+
+
+# Documentation (DEV.TO)
+
+- Part 1 : https://dev.to/akingbade_omosebi/from-code-to-cloud-my-devops-devsecops-journey-part-1-the-vision-3hoe
+- Part 2 : https://dev.to/akingbade_omosebi/from-code-to-cloud-my-devops-devsecops-journey-18ca
+- Part 3 : https://dev.to/akingbade_omosebi/from-code-to-cloud-my-devops-devsecops-journey-5f8p
+- Part 4 : https://dev.to/akingbade_omosebi/from-code-to-cloud-my-devops-devsecops-journey-5ehd
